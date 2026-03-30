@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────
+# Backend — Flask/Gunicorn
+# Usado tanto en DevContainer (modo dev) como en Azure Container Apps (prod)
+# ─────────────────────────────────────────────
+FROM python:3.13-slim
+
+LABEL maintainer="CDIA CGR <cdia@contraloria.cl>"
+LABEL component="backend"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8081
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    curl \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instalar uv
+RUN pip install --upgrade pip uv
+
+# Copiar dependencias primero (cache de layers)
+COPY pyproject.toml ./
+RUN uv sync --no-dev
+
+# Copiar código
+COPY backend/ ./backend/
+COPY frontend/ ./frontend/
+COPY main.py ./
+
+# Usuario no-root
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8081
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8081/ || exit 1
+
+CMD ["python", "main.py", "api", "--host", "0.0.0.0", "--port", "8081"]

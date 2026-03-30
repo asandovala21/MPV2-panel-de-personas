@@ -1,0 +1,18 @@
+# ─────────────────────────────────────────────
+# Frontend — nginx sirviendo HTML/JS estático
+# ─────────────────────────────────────────────
+FROM nginx:alpine
+
+LABEL maintainer="CDIA CGR <cdia@contraloria.cl>"
+LABEL component="frontend"
+
+# Copiar archivos estáticos
+COPY frontend/ /usr/share/nginx/html/
+
+# Configuración nginx: proxy /api → backend
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD wget -qO- http://localhost/ || exit 1
