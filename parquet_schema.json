@@ -1,0 +1,230 @@
+{
+  "inicio": {
+    "cols": [
+      "persona_run_sin_dv",
+      "persona_dv",
+      "persona_nombres",
+      "persona_primer_apellido",
+      "persona_segundo_apellido",
+      "persona_fecha_nacimiento",
+      "persona_estado_civil",
+      "persona_nacionalidad",
+      "persona_sexo",
+      "edad_actual",
+      "fecha_defuncion",
+      "edad_al_fallecer",
+      "estado_funcionario",
+      "cantidad_documentos",
+      "tiene_documentos",
+      "cantidad_familiares_sector_publico",
+      "tiene_familiar_funcionario_publico",
+      "cantidad_hijos",
+      "es_proveedor_estado_ultimos_5_anios",
+      "cantidad_ordenes_compra",
+      "nombre_proveedor_reciente",
+      "cantidad_empresas_socio",
+      "cantidad_empresas_representante",
+      "cantidad_empresas_beneficiario",
+      "renta_neta_anual",
+      "honorario_bruto_anual"
+    ],
+    "shape": [
+      1538428,
+      26
+    ]
+  },
+  "datos_generales": {
+    "cols": [
+      "fecha_actualizacion",
+      "persona_run_sin_dv",
+      "persona_fecha_nacimiento",
+      "persona_estado_civil",
+      "persona_nacionalidad",
+      "persona_sexo",
+      "fecha_defuncion",
+      "mes_foto",
+      "estado_funcionario"
+    ],
+    "shape": [
+      1538014,
+      9
+    ]
+  },
+  "redes_familiares": {
+    "cols": [
+      "fecha_actualizacion",
+      "servidor_publico_run_sin_dv",
+      "familiar_run",
+      "familiar_run_sin_dv",
+      "familiar_nombres",
+      "clave_relacion_familiar",
+      "relacion_familiar",
+      "ranking_relacion_familiar",
+      "familiar_trabaja_sector_publico",
+      "familiar_fecha_nacimiento",
+      "familiar_fecha_defuncion"
+    ],
+    "shape": [
+      57494502,
+      11
+    ]
+  },
+  "rentas": {
+    "cols": [
+      "anio_tributario",
+      "fecha_actualizacion",
+      "funcionario_rut_sin_dv",
+      "declarante_rut",
+      "declarante_rut_sin_dv",
+      "monto_renta_neta",
+      "monto_impuesto_retenido",
+      "renta_neta_anual",
+      "monto_renta_total_exenta"
+    ],
+    "shape": [
+      3405296,
+      9
+    ]
+  },
+  "honorarios": {
+    "cols": [
+      "anio_tributario",
+      "fecha_actualizacion",
+      "funcionario_rut_sin_dv",
+      "declarante_rut",
+      "declarante_rut_sin_dv",
+      "declarante_nombre",
+      "monto_f1879_rete_hono",
+      "monto_f1879_rete_dire10",
+      "monto_f1879_rete_dire",
+      "monto_rete_hono_artes",
+      "monto_rete_hono_isla",
+      "monto_pago_prestamo_c29",
+      "renta_bruta_anual_total"
+    ],
+    "shape": [
+      2224172,
+      13
+    ]
+  },
+  "beneficiarios": {
+    "cols": [
+      "socio_rut_sin_dv",
+      "sociedad_rut_sin_dv",
+      "sociedad_dv",
+      "sociedad_rut",
+      "sociedad_nombre",
+      "participacion_acumulada",
+      "relacion",
+      "fecha_minima_inicio_participacion",
+      "tipo_relacion",
+      "razon_social",
+      "descripcion_actividad",
+      "fecha_constitucion",
+      "fecha_inicio_giro",
+      "fecha_termino_giro",
+      "fecha_actualizacion"
+    ],
+    "shape": [
+      1961165,
+      15
+    ]
+  },
+  "representantes": {
+    "cols": [
+      "representante_rut_sin_dv",
+      "sociedad_rut_sin_dv",
+      "sociedad_dv",
+      "sociedad_rut",
+      "razon_social",
+      "descripcion_actividad",
+      "fecha_constitucion",
+      "fecha_inicio_giro",
+      "fecha_termino_giro",
+      "fecha_actualizacion"
+    ],
+    "shape": [
+      2353860,
+      10
+    ]
+  },
+  "socios_colaboradores": {
+    "cols": [
+      "socio_rut_sin_dv",
+      "sociedad_rut_sin_dv",
+      "sociedad_dv",
+      "sociedad_rut",
+      "razon_social",
+      "descripcion_actividad",
+      "fecha_constitucion",
+      "fecha_inicio_giro",
+      "fecha_termino_giro",
+      "participacion_capital",
+      "fecha_inicio_participacion",
+      "fecha_fin_participacion",
+      "fecha_actualizacion",
+      "rut_socio_colaborador",
+      "participacion_capital_colaborador"
+    ],
+    "shape": [
+      16443860,
+      15
+    ]
+  },
+  "siaper": {
+    "cols": [
+      "rut",
+      "dv",
+      "primer_apellido",
+      "segundo_apellido",
+      "nombres",
+      "fecha_nacimiento",
+      "rango_edad",
+      "sexo",
+      "entidad_padre",
+      "tipo_entidad",
+      "entidad_municipal",
+      "entidad_corregida",
+      "dependencia_corregida",
+      "fecha_desde",
+      "fecha_hasta",
+      "calidad_modalidad",
+      "tipo_calidad_modalidad",
+      "cargo",
+      "orden",
+      "grado",
+      "nivel",
+      "categoria",
+      "planta",
+      "clasificacion_planta",
+      "uso_externo",
+      "sector",
+      "escala_de_remuneraciones",
+      "horas_contrato",
+      "monto_total_contrato_a_honorarios",
+      "numero_cuotas_contrato_a_honorarios"
+    ],
+    "shape": [
+      3989149,
+      30
+    ]
+  },
+  "sistradoc": {
+    "cols": [
+      "rut_persona",
+      "fecha_recepcion",
+      "identificador_documento",
+      "tipo_documento",
+      "nro_documento",
+      "estado",
+      "materia_general",
+      "materia_especifica",
+      "servicio_denunciado",
+      "tiene_fiscalizacion_asociada"
+    ],
+    "shape": [
+      247379,
+      10
+    ]
+  }
+}

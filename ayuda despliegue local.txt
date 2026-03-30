@@ -1,0 +1,62 @@
+# Construir la imagen
+docker build -t panel-personas-cgr:local .
+
+# Ver qué hay dentro de la imagen
+docker run --rm panel-personas-cgr:local ls -la /app
+docker run --rm panel-personas-cgr:local pip list
+docker run --rm panel-personas-cgr:local which python
+
+# Si usaste uv, verificar:
+docker run --rm panel-personas-cgr:local uv --version
+
+# Ejecutar
+docker run -d \
+  --name panel-personas-local \
+  -p 5000:5000 \
+  panel-personas-cgr:local
+
+# Ver logs
+docker logs panel-personas-local -f
+
+#Si ya existe el contenedor hay que pararlo
+docker stop panel-personas-local
+
+# Eliminar el contenedor
+docker rm panel-personas-local
+
+# Ahora sí puedes ejecutar el nuevo
+docker run -d \
+  --name panel-personas-local \
+  -p 5000:5000 \
+  panel-personas-cgr:local
+
+
+# Ver si está corriendo
+docker ps
+
+# Ver los logs (aquí verás errores si los hay)
+docker logs panel-personas-local
+
+# Seguir los logs en tiempo real
+docker logs panel-personas-local -f
+
+
+docker rm -f panel-personas-local
+
+# Ejecutar con las variables de Azure
+docker run -d \
+  --name panel-personas-local \
+  -p 8080:8080 \
+  --env-file .env \
+  panel-personas-cgr:local
+
+# Ver logs
+docker logs panel-personas-local -f
+
+bash# Probar con curl
+curl http://localhost:5000
+
+
+# Si tienes alguna ruta API definida
+curl http://localhost:5000/api/health
+curl http://localhost:5000/api/status

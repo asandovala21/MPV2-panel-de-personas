@@ -1,0 +1,7 @@
+.venv/*
+config/*
+datos/*
+.env
+guía de ayuda.txt
+datos_personales.xlsx
+panel_personas_cgr_poc.egg-info/*

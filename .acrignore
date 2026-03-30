@@ -1,0 +1,76 @@
+# ===========================================
+# ARCHIVOS A IGNORAR EN ACR BUILD
+# ===========================================
+
+# CRÍTICO: Entornos virtuales
+.venv
+.venv/
+.venv/**
+venv
+venv/
+venv/**
+env
+env/
+env/**
+
+# Cache de Python
+__pycache__
+__pycache__/
+**/__pycache__
+*.py[cod]
+*$py.class
+*.pyc
+.Python
+*.egg-info
+**/*.egg-info
+.eggs
+dist
+build
+
+# Git
+.git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.vscode/
+.idea
+.idea/
+*.swp
+*.swo
+
+# Archivos de prueba
+test_*.html
+test_*.py
+tests
+debug.html
+
+# Documentación
+*.md
+*.txt
+
+# Datos locales
+datos_personas.xlsx
+*.xlsx
+*.csv
+
+# Scripts de deploy
+deploy
+deploy/
+azure
+azure/
+
+# Temporales
+*.tmp
+*.log
+*.bak
+.DS_Store
+Thumbs.db
+
+# Lock files
+uv.lock
+poetry.lock
+Pipfile.lock
+

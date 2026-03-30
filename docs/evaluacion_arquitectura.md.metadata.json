@@ -1,0 +1,6 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Refined architecture evaluation for Panel de Personas web application. Compares 4 approaches, recommending pre-computed Parquet in Azure Blob Storage (~$30-75/month). Includes detailed patterns for: name search with suggestions using a lightweight personas_index.parquet (~50MB in-memory), bulk search with Excel export via Polars write_excel, and container deployment. Covers security (TLS, SAS tokens, RBAC), data transfer without VPN (azcopy), and concrete FastAPI backend code examples.",
+  "updatedAt":  "2026-03-09T19:17:35.487626900Z",
+  "version":  "1"
+}

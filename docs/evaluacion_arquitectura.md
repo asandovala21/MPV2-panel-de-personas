@@ -1,0 +1,272 @@
+# Evaluación de Arquitectura: Modelo de Datos para Panel de Personas
+
+## Contexto del Problema
+
+| Aspecto | Detalle |
+|---------|---------|
+| **Origen de datos** | Cloudera Hadoop / Impala (on-premise) |
+| **Destino** | Azure (aplicación web en contenedores) |
+| **Conectividad** | Sin VPN entre Cloudera y Azure |
+| **Volumen** | ~1.500.000 funcionarios públicos + cruces con múltiples fuentes |
+| **Fuentes de datos** | SIAPER (dotación), SII (socios, rentas F1887/F1879), ChileCompra (órdenes de compra), Sistradoc (documentos), RSH (registro social), SRCEI (datos personales, defunciones, red familiar) |
+| **Pantallas** | Inicio (resumen), Historia Laboral, Sociedades y Rentas, Antecedentes Personales, Sistradoc + futuras |
+| **Tipo de app** | Solo lectura/consulta |
+| **Frescura datos** | Batch nocturno T+1 aceptable |
+| **Búsquedas** | Por RUT, por nombre (con sugerencias), masiva con export Excel |
+| **Infraestructura** | Contenedores Azure existentes |
+
+---
+
+## Arquitecturas Evaluadas
+
+### Opción 1: Parquet pre-calculados en Azure Blob Storage (Recomendada ✅)
+
+```mermaid
+flowchart LR
+    subgraph On-Premise
+        A["Cloudera Hadoop\n(Impala)"] --> B["Proceso Batch\nNocturno (Python)"]
+    end
+    subgraph Azure
+        B -->|"azcopy HTTPS"| C["Azure Blob Storage\n(.parquet por pantalla)"]
+        C --> D["Backend API\n(Contenedor)"]
+        D -->|"Polars/DuckDB\nfiltro por RUT/nombre"| E["Aplicación Web"]
+    end
+```
+
+#### Archivos Parquet propuestos (1 por pantalla)
+
+| Archivo | Origen SQL | Tamaño estimado |
+|---------|-----------|-----------------|
+| `inicio.parquet` | `inicio.sql` (15 CTEs, resumen) | ~200-400 MB |
+| `historia_laboral.parquet` | `f_relaciones_laborales_estado.sql` | ~500 MB-1 GB |
+| `sociedades_rentas.parquet` | `f_transacciones_comerciales.sql` + rentas | ~300-600 MB |
+| `antecedentes.parquet` | `f_persona.sql` | ~150-300 MB |
+| `sistradoc.parquet` | `f_documentos_ingresados.sql` | ~200-400 MB |
+| **`personas_index.parquet`** ⭐ | Índice ligero: RUT + nombre + apellidos | **~30-50 MB** |
+
+> [!IMPORTANT]
+> El archivo **`personas_index.parquet`** es nuevo y crucial: es un índice ligero (~30 MB) solo con RUT, nombres y apellidos que permite búsqueda rápida por nombre sin cargar los archivos pesados de cada pantalla.
+
+#### Costos Azure estimados (USD/mes)
+
+| Recurso | Especificación | Costo estimado |
+|---------|---------------|----------------|
+| Blob Storage (Hot) | ~3-5 GB Parquet | **~$0.50-1.00** |
+| Container Instance / App Service | 2 vCPU, 4 GB RAM (para cache en memoria) | **~$30-70** |
+| Transferencia de datos | Ingesta batch nocturna ~5 GB/día | **~$0** (ingesta gratis) |
+| **Total mensual** | | **~$30-75 USD** |
+
+#### Ventajas
+- **Más económico**: 3-10x más barato que las alternativas con DB
+- **Ya lo están haciendo parcialmente**: `extraccion.py` ya genera Parquet
+- **Rendimiento excelente**: Polars/DuckDB con filtros pushdown; <100ms por RUT
+- **Sin base de datos**: Sin costos de DB managed ni mantenimiento
+- **Escalable**: Agregar pantallas = agregar archivos Parquet
+
+#### Desventajas
+- Datos no son en tiempo real (T+1 aceptable según requerimiento)
+- Búsqueda por nombre requiere índice en memoria (~50 MB de RAM)
+
+---
+
+### Opción 2: Azure SQL Database / PostgreSQL Flexible Server
+
+#### Costos: ~$115-355 USD/mes
+
+- 5-10x más caro que Parquet
+- Sobredimensionado para lectura filtrada por RUT
+- Requiere mantenimiento de esquemas, migraciones e índices
+
+---
+
+### Opción 3: Azure Synapse Serverless
+
+#### Costos: ~$40-160+ USD/mes (variable)
+
+> [!WARNING]
+> Cobra por TB escaneado. Con búsquedas masivas frecuentes, los costos escalan rápidamente e impredeciblemente.
+
+---
+
+### Opción 4: Consultas en tiempo real a Cloudera — Descartada ❌
+
+No viable: sin VPN, latencia 10-60s por query, costo VPN ~$140/mes adicional.
+
+---
+
+## Matriz Comparativa
+
+| Criterio | Parquet + Blob ✅ | Azure SQL/PG | Synapse | Tiempo Real |
+|----------|:-----------------:|:------------:|:-------:|:-----------:|
+| **Costo/mes** | $30-75 | $115-355 | $40-160+ | N/A |
+| **Búsqueda RUT** | <100ms | ~50ms | 1-5s | 10-60s |
+| **Búsqueda nombre** | ~200ms (índice) | ~100ms (índice B-tree) | 2-5s | N/A |
+| **Búsqueda masiva** | ~1-3s | ~1-2s | 5-15s | N/A |
+| **Export Excel** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | N/A |
+| **Complejidad ops** | Baja | Media-Alta | Media | N/A |
+
+---
+
+## Arquitectura Detallada: Opción 1 (Recomendada)
+
+```mermaid
+flowchart TB
+    subgraph "Batch Nocturno (On-Premise)"
+        A["extraccion.py"] -->|ODBC a Impala| B["Ejecuta SQL\npor pantalla"]
+        B --> C["Export .parquet\n(Polars)"]
+        C --> C2["Genera\npersonas_index.parquet"]
+        C2 -->|"azcopy HTTPS\n+ SAS token"| D["Azure Blob Storage"]
+    end
+    
+    subgraph "Azure - Contenedores"
+        D --> E["Backend API\n(FastAPI en Container)"]
+        E --> E1["Polars: Índice\nen memoria ~50MB"]
+        E1 -->|"Búsqueda nombre/RUT"| F["Lista coincidencias"]
+        F -->|"Usuario selecciona"| G["Carga pantalla\nespecífica por RUT"]
+        G --> H["Respuesta JSON"]
+        H --> I["App Web Frontend"]
+        E -->|"Búsqueda masiva\n+ filtros"| J["Export Excel\n(openpyxl/xlsxwriter)"]
+        J --> I
+    end
+```
+
+### Patrón de búsqueda por nombre (con sugerencias)
+
+```python
+import polars as pl
+
+class DataService:
+    def __init__(self):
+        # Al iniciar el contenedor: cargar índice ligero en memoria (~50 MB)
+        self.index = pl.read_parquet("data/personas_index.parquet")
+        # Columnas: rut, dv, nombres, primer_apellido, segundo_apellido
+        
+        # LazyFrames para pantallas (NO carga datos, solo metadatos)
+        self.screens = {
+            "inicio": pl.scan_parquet("data/inicio.parquet"),
+            "historia_laboral": pl.scan_parquet("data/historia_laboral.parquet"),
+            "sociedades_rentas": pl.scan_parquet("data/sociedades_rentas.parquet"),
+            "antecedentes": pl.scan_parquet("data/antecedentes.parquet"),
+            "sistradoc": pl.scan_parquet("data/sistradoc.parquet"),
+        }
+
+    def buscar_por_nombre(self, query: str, limit: int = 20) -> list[dict]:
+        """Búsqueda por nombre con sugerencias — ~200ms sobre 1.5M registros"""
+        q = query.upper().strip()
+        resultado = self.index.filter(
+            pl.col("nombres").str.contains(q, literal=True)
+            | pl.col("primer_apellido").str.contains(q, literal=True)
+            | pl.col("segundo_apellido").str.contains(q, literal=True)
+        ).head(limit)
+        return resultado.to_dicts()
+
+    def buscar_por_rut(self, rut: int) -> list[dict]:
+        """Búsqueda exacta por RUT — <10ms"""
+        return self.index.filter(pl.col("rut") == rut).to_dicts()
+
+    def get_pantalla(self, rut: int, screen: str) -> list[dict]:
+        """Datos de una pantalla específica para un RUT — <100ms"""
+        lf = self.screens[screen]
+        return lf.filter(pl.col("rut") == rut).collect().to_dicts()
+
+    def busqueda_masiva(self, filtros: dict) -> pl.DataFrame:
+        """Búsqueda masiva con filtros, retorna DataFrame para export Excel"""
+        lf = self.screens["inicio"]  # O la pantalla que corresponda
+        for col, valor in filtros.items():
+            lf = lf.filter(pl.col(col) == valor)
+        return lf.collect()
+
+    def export_excel(self, df: pl.DataFrame, path: str):
+        """Export a Excel para descarga"""
+        df.write_excel(path)  # Polars soporta write_excel directo
+```
+
+> [!TIP]
+> **Rendimiento de búsqueda por nombre**: Polars filtra 1.5M strings en ~200ms en un índice de ~50 MB. Si esto no es suficiente, se puede agregar un diccionario pre-computado `{nombre_normalizado: [ruts]}` para búsqueda en <10ms.
+
+### Búsqueda masiva y Export Excel
+
+```python
+# Ejemplo endpoint FastAPI para búsqueda masiva
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+import tempfile
+
+app = FastAPI()
+service = DataService()
+
+@app.get("/api/busqueda-masiva")
+async def busqueda_masiva(
+    estado_funcionario: str = None,
+    es_proveedor: str = None,
+    tiene_sociedades: bool = None,
+    export: bool = False
+):
+    filtros = {}
+    if estado_funcionario:
+        filtros["estado_funcionario"] = estado_funcionario
+    if es_proveedor:
+        filtros["es_proveedor_estado_ultimos_5_anios"] = es_proveedor
+    
+    df = service.busqueda_masiva(filtros)
+    
+    if export:
+        # Genera Excel temporal y retorna para descarga
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+            df.write_excel(f.name)
+            return FileResponse(f.name, filename="resultados.xlsx")
+    
+    # Paginación para la web
+    return {"total": len(df), "data": df.head(100).to_dicts()}
+```
+
+---
+
+## Plan de transferencia: Cloudera → Azure (sin VPN)
+
+| Método | Seguridad | Recomendación |
+|--------|-----------|---------------|
+| **`azcopy` via HTTPS** | TLS + SAS token | ✅ **Recomendado** |
+| Azure SDK Python (`BlobServiceClient`) | TLS + Managed Identity | ✅ Alternativa |
+
+```bash
+# Agregar al final de extraccion.py o como script separado
+azcopy copy "./datos/parquet/*.parquet" \
+  "https://<storage>.blob.core.windows.net/panel-personas/?<SAS-token>" \
+  --overwrite=true
+```
+
+---
+
+## Seguridad
+
+| Capa | Medida |
+|------|--------|
+| **Datos en tránsito** | HTTPS/TLS 1.2+ (azcopy) |
+| **Datos en reposo** | Azure Storage encryption AES-256 (por defecto) |
+| **Acceso storage** | SAS tokens con expiración + IP whitelisting |
+| **Acceso app** | Azure AD / Entra ID |
+| **Red** | Private Endpoint para Blob (opcional) |
+| **Datos sensibles** | RBAC Azure + sin exposición pública |
+
+---
+
+## Cuándo reconsiderar una base de datos
+
+- Si requieren **búsqueda full-text avanzada** (fuzzy matching, diacríticos, sinónimos)
+- Si necesitan **joins dinámicos** entre pantallas definidos por el usuario
+- Si el volumen crece a **>50M registros** por pantalla
+- Si necesitan **actualización intra-día** (no solo batch nocturno)
+
+---
+
+## Próximos pasos sugeridos
+
+1. **Generar `personas_index.parquet`** en `extraccion.py` (RUT + nombres + apellidos)
+2. **Agregar upload a Azure Blob** con `azcopy` o `azure-storage-blob` SDK
+3. **Backend API** (FastAPI + Polars en contenedor) con endpoints:
+   - `GET /api/buscar?q=nombre` → sugerencias
+   - `GET /api/persona/{rut}/{pantalla}` → datos por pantalla
+   - `GET /api/busqueda-masiva?filtros...&export=true` → Excel
+4. **Container config**: 2 vCPU / 4 GB RAM para mantener índice en memoria
+5. **Seguridad**: Managed Identity, SAS tokens, RBAC

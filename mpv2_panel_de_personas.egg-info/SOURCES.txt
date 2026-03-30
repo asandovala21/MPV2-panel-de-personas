@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+backend/__init__.py
+backend/app-backup-local.py
+backend/app.py
+backend/datos_personas.xlsx
+backend/utils/__init__.py
+backend/utils/rut_validator.py
+mpv2_panel_de_personas.egg-info/PKG-INFO
+mpv2_panel_de_personas.egg-info/SOURCES.txt
+mpv2_panel_de_personas.egg-info/dependency_links.txt
+mpv2_panel_de_personas.egg-info/entry_points.txt
+mpv2_panel_de_personas.egg-info/requires.txt
+mpv2_panel_de_personas.egg-info/top_level.txt

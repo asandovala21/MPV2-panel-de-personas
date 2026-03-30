@@ -1,0 +1,74 @@
+# ===========================================
+# Docker Ignore - Panel de Personas CGR
+# ===========================================
+
+# Python virtual environments
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Environment files
+.env
+*.env
+.env.*
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# Test files
+test_*.html
+test_*.py
+tests/
+debug.html
+*.test.*
+*.spec.*
+
+# Documentation
+*.md
+*.txt
+!requirements.txt
+
+# Data files (loaded from Azure Blob)
+datos_personas.xlsx
+*.xlsx
+*.csv
+datos/
+
+# Deploy scripts
+deploy/
+azure/
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+.DS_Store
+Thumbs.db
+
+# Lock files
+uv.lock
+poetry.lock
+Pipfile.lock
+package-lock.json
+
+# ACR ignore
+.acrignore

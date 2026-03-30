@@ -1,0 +1,296 @@
+# Evaluación de Arquitectura: Modelo de Datos para Panel de Personas
+
+## Contexto del Problema
+
+| Aspecto | Detalle |
+|---------|---------|
+| **Origen de datos** | Cloudera Hadoop / Impala (on-premise) |
+| **Destino** | Azure (aplicación web) |
+| **Conectividad** | Sin VPN entre Cloudera y Azure |
+| **Volumen** | ~1.500.000 funcionarios públicos + cruces con múltiples fuentes |
+| **Fuentes de datos** | SIAPER (dotación), SII (socios, rentas F1887/F1879), ChileCompra (órdenes de compra), Sistradoc (documentos), RSH (registro social), SRCEI (datos personales, defunciones, red familiar) |
+| **Pantallas** | Inicio (resumen), Historia Laboral, Sociedades y Rentas, Antecedentes Personales, Sistradoc + futuras |
+
+---
+
+## Arquitecturas Evaluadas
+
+### Opción 1: Parquet pre-calculados en Azure Blob Storage (Recomendada ✅)
+
+```mermaid
+flowchart LR
+    subgraph On-Premise
+        A["Cloudera Hadoop\n(Impala)"] --> B["Proceso Batch\nNocturno (Python)"]
+    end
+    subgraph Azure
+        B -->|SFTP/SCP\no API REST| C["Azure Blob Storage\n(.parquet por pantalla)"]
+        C --> D["Backend API\n(Python/FastAPI)"]
+        D -->|Polars/DuckDB\nfiltro por RUT| E["Aplicación Web"]
+    end
+```
+
+**Flujo:** SQL en Impala → Export batch nocturno → Upload a Blob Storage → Backend lee Parquet con Polars/DuckDB → Filtro por RUT → Respuesta JSON a la app
+
+#### Archivos Parquet propuestos (1 por pantalla)
+
+| Archivo | Origen SQL | Tamaño estimado |
+|---------|-----------|-----------------|
+| `inicio.parquet` | [inicio.sql](file:///c:/Users/asandovala/Panel%20de%20personas/Extraccion%20datos/data/sql/inicio.sql) (15 CTEs, resumen) | ~200-400 MB |
+| `historia_laboral.parquet` | [f_relaciones_laborales_estado.sql](file:///c:/Users/asandovala/Panel%20de%20personas/Extraccion%20datos/data/sql/sql-antiguos/f_relaciones_laborales_estado.sql) | ~500 MB-1 GB |
+| `sociedades_rentas.parquet` | [f_transacciones_comerciales.sql](file:///c:/Users/asandovala/Panel%20de%20personas/Extraccion%20datos/data/sql/sql-antiguos/f_transacciones_comerciales.sql) + rentas | ~300-600 MB |
+| `antecedentes.parquet` | [f_persona.sql](file:///c:/Users/asandovala/Panel%20de%20personas/Extraccion%20datos/data/sql/sql-antiguos/f_persona.sql) | ~150-300 MB |
+| `sistradoc.parquet` | [f_documentos_ingresados.sql](file:///c:/Users/asandovala/Panel%20de%20personas/Extraccion%20datos/data/sql/sql-antiguos/f_documentos_ingresados.sql) | ~200-400 MB |
+
+#### Costos Azure estimados (USD/mes)
+
+| Recurso | Especificación | Costo estimado |
+|---------|---------------|----------------|
+| Blob Storage (Hot) | ~3-5 GB Parquet | **~$0.50-1.00** |
+| App Service (Backend) | B1-B2 (1-2 vCPU, 1.75-3.5 GB RAM) | **~$13-55** |
+| Transferencia de datos | Ingesta batch nocturna ~5 GB/día | **~$0** (ingesta gratis) |
+| **Total mensual** | | **~$15-60 USD** |
+
+#### Ventajas
+- **Más económico**: Almacenamiento Parquet es extremadamente barato
+- **Ya lo están haciendo parcialmente**: [extraccion.py](file:///c:/Users/asandovala/Panel%20de%20personas/Extraccion%20datos/extraccion.py) ya genera Parquet
+- **Rendimiento excelente**: Polars/DuckDB leen Parquet con filtros pushdown; consulta por 1 RUT en <100ms sobre 1.5M registros
+- **Sin base de datos**: Elimina costo de DB managed, licencias, mantenimiento
+- **Seguridad**: Parquet en Blob privado, sin acceso público; el backend controla el acceso
+- **Escalable**: Agregar pantallas = agregar archivos Parquet
+
+#### Desventajas
+- Datos no son en tiempo real (latencia máxima ~24 horas)
+- Si se necesitan consultas ad-hoc complejas, es menos flexible que una DB
+
+---
+
+### Opción 2: Azure SQL Database / PostgreSQL Flexible Server
+
+```mermaid
+flowchart LR
+    subgraph On-Premise
+        A["Cloudera Hadoop\n(Impala)"] --> B["Proceso Batch\nNocturno"]
+    end
+    subgraph Azure
+        B -->|SFTP/API| C["Azure SQL DB\no PostgreSQL"]
+        C --> D["Backend API"]
+        D --> E["Aplicación Web"]
+    end
+```
+
+#### Costos Azure estimados (USD/mes)
+
+| Recurso | Especificación | Costo estimado |
+|---------|---------------|----------------|
+| Azure SQL DB (General Purpose) | 2 vCores, 32 GB storage | **~$150-300** |
+| Azure PostgreSQL Flexible | 2 vCores, 32 GB | **~$100-200** |
+| App Service | B1-B2 | **~$13-55** |
+| Transferencia | Batch nocturna | **~$0** |
+| **Total mensual** | | **~$115-355 USD** |
+
+#### Ventajas
+- Consultas SQL directas, flexibilidad máxima para queries ad-hoc
+- Soporte transaccional e índices optimizados
+
+#### Desventajas
+- **5-20x más caro** que Parquet en Blob
+- Requiere mantenimiento de esquemas, migraciones, backups
+- Para su caso de uso (lectura filtrada por RUT), es sobredimensionado
+- La carga batch requiere ETL adicional (INSERT/UPSERT masivo)
+
+---
+
+### Opción 3: Azure Synapse Serverless (Analítico)
+
+```mermaid
+flowchart LR
+    subgraph On-Premise
+        A["Cloudera Hadoop"] --> B["Batch"]
+    end
+    subgraph Azure
+        B --> C["Data Lake\n(Blob/ADLS)"]
+        C --> D["Synapse Serverless\n(SQL on-demand)"]
+        D --> E["Backend API"]
+        E --> F["App Web"]
+    end
+```
+
+#### Costos Azure estimados (USD/mes)
+
+| Recurso | Especificación | Costo estimado |
+|---------|---------------|----------------|
+| ADLS Gen2 | ~5 GB | **~$1** |
+| Synapse Serverless | Pago por TB escaneado (~$5/TB) | **~$25-100+** (variable) |
+| App Service | B1 | **~$13-55** |
+| **Total mensual** | | **~$40-160 USD** |
+
+> [!WARNING]
+> **Riesgo de costos variables**: Synapse cobra por TB de datos escaneados. Con 1.5M registros consultados frecuentemente, los costos pueden escalar rápidamente si no se controla el volumen de queries. Es ideal para analítica exploratoria, no para consumo aplicativo repetitivo.
+
+#### Ventajas
+- SQL estándar directo sobre Parquet
+- Serverless = no paga cuando no se usa
+
+#### Desventajas
+- Costo variable impredecible con uso frecuente
+- Latencia mayor que lectura directa de Parquet (~1-5 seg por query vs <100ms)
+- Sobredimensionado para filtrar por RUT
+
+---
+
+### Opción 4: Consultas en tiempo real a Cloudera (Descartada ❌)
+
+| Aspecto | Evaluación |
+|---------|-----------|
+| **Viabilidad** | Requiere VPN o tunnel seguro que **no existe** |
+| **Latencia** | Queries SQL de [inicio.sql](file:///c:/Users/asandovala/Panel%20de%20personas/Extraccion%20datos/data/sql/inicio.sql) (15 CTEs, 10+ JOINs) tomarían **10-60 segundos** en Impala |
+| **Costo** | VPN site-to-site Azure (~$140/mes) + latencia inaceptable para UX |
+| **Veredicto** | **Descartada** por falta de conectividad y latencia |
+
+---
+
+## Matriz Comparativa
+
+| Criterio | Parquet + Blob ✅ | Azure SQL/PG | Synapse Serverless | Tiempo Real |
+|----------|:-----------------:|:------------:|:------------------:|:-----------:|
+| **Costo mensual** | $15-60 | $115-355 | $40-160+ | N/A |
+| **Latencia consulta** | <100ms | ~50-200ms | 1-5s | 10-60s |
+| **Complejidad ops** | Baja | Media-Alta | Media | N/A |
+| **Seguridad** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ❌ |
+| **Fresura datos** | T+1 (batch) | T+1 (batch) | T+1 (batch) | Tiempo real |
+| **Escalabilidad** | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | N/A |
+| **Ya implementado** | Parcialmente | No | No | No |
+
+---
+
+## Recomendación: Opción 1 — Parquet Pre-calculados
+
+> [!IMPORTANT]
+> Para su caso de uso específico (datos batch, lectura por RUT, ~1.5M registros, sin VPN), la opción Parquet es **la más eficiente en costo, rendimiento y seguridad**.
+
+### Arquitectura propuesta detallada
+
+```mermaid
+flowchart TB
+    subgraph Batch Nocturno
+        A["extraccion.py\n(ya existente)"] -->|ODBC a Impala| B["Ejecuta SQL\npor pantalla"]
+        B --> C["Export .parquet\n(Polars)"]
+        C -->|azcopy / Azure SDK\nvía Internet HTTPS| D["Azure Blob Storage\n(contenedor privado)"]
+    end
+    
+    subgraph Azure - Producción
+        D --> E["FastAPI Backend\n(App Service B1)"]
+        E -->|"Polars/DuckDB:\ndf.filter(rut == X)"| F["Respuesta JSON"]
+        F --> G["App Web\n(Frontend)"]
+    end
+    
+    subgraph Seguridad
+        H["Managed Identity"] --> D
+        I["Azure AD / Entra ID"] --> E
+        J["Private Endpoint\n(opcional)"] --> D
+    end
+```
+
+### Patrón de lectura en el backend
+
+```python
+# Ejemplo: cómo el backend serviría datos por pantalla
+import polars as pl
+
+# Los archivos se cachean en memoria al iniciar la app
+CACHE = {}
+
+def load_screen(screen_name: str) -> pl.LazyFrame:
+    """Carga lazy de Parquet (solo lee metadatos, no datos completos)"""
+    if screen_name not in CACHE:
+        CACHE[screen_name] = pl.scan_parquet(f"data/{screen_name}.parquet")
+    return CACHE[screen_name]
+
+def get_persona(rut: int, screen: str) -> dict:
+    """Filtra por RUT — Parquet con pushdown predicate, <100ms"""
+    lf = load_screen(screen)
+    result = lf.filter(pl.col("rut") == rut).collect()
+    return result.to_dicts()
+```
+
+> [!TIP]
+> **Polars con `scan_parquet` + `filter`** aplica predicate pushdown: solo lee las row groups donde puede estar el RUT, no escanea el archivo completo. Con 1.5M registros en ~300 MB, la respuesta es prácticamente instantánea (<50ms).
+
+### Mejora opcional: Particionamiento por rango de RUT
+
+Si el rendimiento no es suficiente (poco probable), se puede particionar:
+```
+data/
+  inicio/
+    rut_0_5000000.parquet
+    rut_5000001_10000000.parquet
+    rut_10000001_20000000.parquet
+```
+Esto reduciría el escaneo a ~1/3 del archivo.
+
+---
+
+## Plan de transferencia: Cloudera → Azure (sin VPN)
+
+Dado que no existe VPN, las opciones seguras son:
+
+| Método | Seguridad | Complejidad | Recomendación |
+|--------|-----------|-------------|---------------|
+| **`azcopy` via HTTPS** | ⭐⭐⭐⭐⭐ (TLS + SAS token) | Baja | ✅ **Recomendado** |
+| Azure SDK Python (BlobServiceClient) | ⭐⭐⭐⭐⭐ | Baja | ✅ Alternativa |
+| SFTP a Azure Blob | ⭐⭐⭐⭐ | Media | Viable |
+| Azure Data Factory (Self-hosted IR) | ⭐⭐⭐⭐⭐ | Alta | Sobredimensionado |
+
+### Flujo recomendado con `azcopy`
+
+```bash
+# En el servidor que ejecuta extraccion.py (con acceso a Impala)
+# 1. Ejecutar extracción (ya existe)
+python extraccion.py
+
+# 2. Subir a Azure Blob con azcopy (cifrado TLS)
+azcopy copy "./datos/parquet/*.parquet" \
+  "https://<storage>.blob.core.windows.net/panel-personas/?<SAS-token>" \
+  --overwrite=true
+```
+
+---
+
+## Seguridad
+
+| Capa | Medida |
+|------|--------|
+| **Datos en tránsito** | HTTPS/TLS 1.2+ (azcopy o Azure SDK) |
+| **Datos en reposo** | Azure Storage encryption (AES-256, por defecto) |
+| **Acceso al storage** | SAS tokens con expiración + IP whitelisting |
+| **Acceso a la app** | Azure AD / Entra ID authentication |
+| **Red** | Sin exposición pública del Blob (Private Endpoint opcional) |
+| **Datos sensibles (RUT)** | Acceso controlado por roles (RBAC Azure) |
+
+---
+
+## Respuesta a sus dudas específicas
+
+### ¿Es mejor pre-calcular y cargar batch nocturno en Parquet?
+**Sí, definitivamente.** Sus consultas SQL (ej: [inicio.sql](file:///c:/Users/asandovala/Panel%20de%20personas/Extraccion%20datos/data/sql/inicio.sql) con 15 CTEs, 10+ JOINs) son pesadas. Pre-calcularlas una vez y servir el resultado es órdenes de magnitud más eficiente que recalcular por cada request.
+
+### ¿Base de datos analítica para rapidez?
+**No es necesaria para su volumen.** 1.5M registros en Parquet es trivial para Polars/DuckDB. Una DB analítica (Synapse, etc.) añade costo sin beneficio proporcional. Se justificaría si tuvieran >100M registros o queries ad-hoc complejas desde la app.
+
+### ¿Consultas en tiempo real serían lentas y costosas?
+**Correcto.** Sin VPN y con la complejidad de sus SQL, el tiempo real es inviable. El enfoque batch T+1 es el correcto para datos de fiscalización que no cambian en minutos.
+
+### ¿Cuándo **sí** considerar una base de datos?
+- Si la app necesita **escribir datos** (no solo leer)
+- Si necesitan **búsqueda full-text** sobre múltiples campos
+- Si requieren **joins dinámicos** entre pantallas que el usuario defina
+- Si el volumen crece a **>50M registros** por pantalla
+
+---
+
+## Próximos pasos sugeridos
+
+1. **Adaptar [extraccion.py](file:///c:/Users/asandovala/Panel%20de%20personas/Extraccion%20datos/extraccion.py)** para subir Parquet a Azure Blob Storage (agregar `azcopy` o `azure-storage-blob`)
+2. **Crear el backend API** (FastAPI + Polars) que lea los Parquet y sirva endpoints por pantalla
+3. **Programar el batch nocturno** (cron job o Azure Automation) para la extracción diaria
+4. **Configurar seguridad**: Managed Identity, SAS tokens, RBAC

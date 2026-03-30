@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Frontend</title>
+</head>
+<body>
+    <h1>Debug Test</h1>
+    
+    <input type="text" id="test-input" value="18063844" placeholder="RUT">
+    <button id="test-btn" onclick="testFunction()">Test Button</button>
+    
+    <div id="result"></div>
+    
+    <script>
+        console.log('Script cargado');
+        
+        function testFunction() {
+            console.log('Función testFunction llamada');
+            document.getElementById('result').innerHTML = 'Función ejecutada correctamente!';
+            
+            // Probar llamada a API
+            fetch('http://127.0.0.1:8082/api/health')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('API Health:', data);
+                    document.getElementById('result').innerHTML += '<br>API funciona: ' + data.status;
+                })
+                .catch(error => {
+                    console.error('Error API:', error);
+                    document.getElementById('result').innerHTML += '<br>Error API: ' + error.message;
+                });
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded');
+            const btn = document.getElementById('test-btn');
+            if (btn) {
+                console.log('Botón encontrado, agregando listener');
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('Listener del botón ejecutado');
+                    testFunction();
+                });
+            } else {
+                console.error('Botón no encontrado');
+            }
+        });
+    </script>
+</body>
+</html>
