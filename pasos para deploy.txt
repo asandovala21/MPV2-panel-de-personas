@@ -1,0 +1,108 @@
+
+## en powershell
+(copiar y pegar)
+.venv/bin/activate
+
+
+## Esto es en ubuntu:
+chmod +x ./deploy/deploy.sh --init
+./setup_azure.sh
+
+## En powershell es:
+
+bash deploy/deploy.sh --init
+                                                                                                                                                         
+Al terminar el deploy, para restaurar el entorno local:
+                                                                                                                                                         
+uv sync  
+
+Habían problemas con .venv creado por uv que lo crea como un entorno compatible con unix y no nativo de windows. 
+
+
+Primera vez (desde cero)                                                                                  
+   
+  Un solo comando hace todo:                                                                                
+  bash deploy/deploy.sh --init    
+
+Internamente hace esto en orden:
+  1. Genera sufijo único → lo guarda en deploy/.sufijo
+  2. Bicep pasada 1 → crea ACR, Storage, KeyVault, etc. (Container Apps fallan, es normal)
+  3. Build imágenes Docker en ACR
+  4. Bicep pasada 2 → crea Container Apps (ahora las imágenes ya existen)
+  5. Sube parquets al Blob Storage
+  6. Muestra la URL final
+
+
+Deploys siguientes (día a día)
+
+  bash deploy/deploy.sh --app          # solo actualiza la app
+  bash deploy/deploy.sh --app --tag v1.2
+  bash deploy/deploy.sh --full         # infra + app
+
+
+---                                                                                                       
+   
+  ┌────────────────────────┬─────────────────────────────────────────────────────────────────────────────┐  
+  │        Comando         │                                Cuándo usarlo                                │
+  ├────────────────────────┼─────────────────────────────────────────────────────────────────────────────┤
+  │ --init                 │ Primera vez — crea todo desde cero                                          │
+  ├────────────────────────┼─────────────────────────────────────────────────────────────────────────────┤
+  │ --app                  │ Cambias código en backend/ o frontend/                                      │
+  ├────────────────────────┼─────────────────────────────────────────────────────────────────────────────┤
+  │ --infra                │ Cambias archivos en infra/ (Bicep) — ej: más CPU, nuevas variables de       │
+  │                        │ entorno                                                                     │
+  ├────────────────────────┼─────────────────────────────────────────────────────────────────────────────┤
+  │ --full                 │ Cambias código y Bicep al mismo tiempo                                      │
+  ├────────────────────────┼─────────────────────────────────────────────────────────────────────────────┤
+  │ upload_new_parquets.sh │ Solo actualizas los datos (parquets) sin tocar código                       │
+  └────────────────────────┴─────────────────────────────────────────────────────────────────────────────┘
+
+  ---
+  Ejemplo flujo típico:
+
+  Corriges un bug en backend/  →  bash deploy/deploy.sh --app
+  Subes datos nuevos           →  bash deploy/upload_new_parquets.sh
+  Subes datos Y corriges bug   →  bash deploy/deploy.sh --app  (los parquets se suben solo en --init)
+
+  ▎ Nota: --app no sube parquets. Si cambias código y datos al mismo tiempo, ejecuta los dos comandos por
+  separado.
+
+Si subo datos y cambio código que comandos ejecuto entonces                                               
+                                                              
+● bash deploy/deploy.sh --app                                                                               
+  bash deploy/upload_new_parquets.sh                                                                        
+                                                                                                            
+  En cualquier orden, son independientes entre sí.
+
+--full ; qué significa cambiar los biceps?                                                               
+
+● --full = --infra + --app
+
+  --infra aplica cuando modificas archivos en infra/ para cambiar configuración de infraestructura, por
+  ejemplo:
+
+  ┌─────────────────────────┬───────────────────────────────────────────────┐
+  │ Qué cambias en el Bicep │                    Ejemplo                    │
+  ├─────────────────────────┼───────────────────────────────────────────────┤
+  │ Recursos del backend    │ Subir de 0.5 CPU a 1 CPU                      │
+  ├─────────────────────────┼───────────────────────────────────────────────┤
+  │ Escalado                │ Cambiar máximo de 10 réplicas a 20            │
+  ├─────────────────────────┼───────────────────────────────────────────────┤
+  │ Variables de entorno    │ Agregar una nueva variable a la Container App │
+  ├─────────────────────────┼───────────────────────────────────────────────┤
+  │ Storage                 │ Agregar un nuevo contenedor de blobs          │
+  ├─────────────────────────┼───────────────────────────────────────────────┤
+  │ Nuevos recursos         │ Agregar una base de datos, una caché, etc.    │
+  └─────────────────────────┴───────────────────────────────────────────────┘
+
+  ---
+  En la práctica cotidiana casi nunca usarás --infra ni --full.
+
+  El 90% del tiempo será:
+  - --app → cambiaste código
+  - upload_new_parquets.sh → cambiaste datos
+
+  --full sería para cuando por ejemplo decides que el backend necesita más memoria y editas
+  containerapp-backend.bicep para cambiarlo.
+
+

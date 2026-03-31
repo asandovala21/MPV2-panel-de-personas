@@ -1,0 +1,46 @@
+el .sh orquesta y dentro llama a Bicep. La diferencia clave:               
+
+  ---                                                                                
+  Solo comandos az en el .sh:
+  az containerapp create --name panel-app --image ... --cpu 0.5 --memory 1 ...       
+  az storage account create --name st123 ...
+  - Imperativo: "haz esto ahora"
+  - Si ya existe el recurso → error o comportamiento inesperado
+  - No hay registro de cuál es el estado deseado
+  - Difícil de reproducir exactamente igual
+
+  ---
+  Bicep (lo que usamos):
+  resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
+    name: 'st123'
+    sku: { name: 'Standard_LRS' }
+  }
+  - Declarativo: "quiero que el estado sea este"
+  - Idempotente — si ya existe con la misma config, no hace nada; si cambió algo,
+  solo aplica el delta
+  - Es el "source of truth" de la infraestructura — está en git
+  - Azure valida el template completo antes de ejecutar cualquier cosa
+
+  ---
+
+
+En la práctica para este proyecto:
+
+  ┌───────────────────────┬─────────────────────────────┬───────────────────────┐
+  │       Situación       │         Con solo az         │       Con Bicep       │
+  ├───────────────────────┼─────────────────────────────┼───────────────────────┤
+  │ Re-ejecutar el deploy │ Errores por recursos ya     │ Sin problema          │
+  │                       │ existentes                  │                       │
+  ├───────────────────────┼─────────────────────────────┼───────────────────────┤
+  │ Cambiar CPU del       │ Recordar el comando exacto  │ Editar el .bicep y    │
+  │ backend               │                             │ re-deploy             │
+  ├───────────────────────┼─────────────────────────────┼───────────────────────┤
+  │ Nuevo miembro del     │ Documentación               │ git clone + un        │
+  │ equipo                │ desincronizada              │ comando               │
+  ├───────────────────────┼─────────────────────────────┼───────────────────────┤
+  │ Auditoría de          │ Revisar Azure Portal        │ Leer el .bicep en git │
+  │ configuración         │                             │                       │
+  └───────────────────────┴─────────────────────────────┴───────────────────────┘
+
+  El .sh existe solo para automatizar los pasos que Bicep no puede hacer: build de
+  imágenes Docker y push al registry.
